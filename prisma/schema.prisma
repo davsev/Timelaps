@@ -1,0 +1,41 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./timelaps.db"
+}
+
+model Project {
+  id           String   @id @default(uuid())
+  name         String
+  description  String
+  type         String
+  style        String
+  aspectRatio  String   @default("9:16")
+  masterPrompt String
+  seed         Int
+  createdAt    DateTime @default(now())
+  clips        Clip[]
+}
+
+model Clip {
+  id               String   @id @default(uuid())
+  projectId        String
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stageIndex       Int
+  ideaTitle        String
+  stageDescription String
+  masterPrompt     String
+  imagePrompt      String
+  klingPrompt      String
+  startImagePath   String?
+  videoPath        String?
+  status           String   @default("pending")
+  errorMessage     String?
+  createdAt        DateTime @default(now())
+}
