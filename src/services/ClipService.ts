@@ -149,8 +149,11 @@ class ClipService {
         },
       });
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+      const raw = error instanceof Error ? error.message : String(error);
+      // Prefix with which step failed so the UI shows clear context
+      const errorMessage = raw.startsWith('Forbidden') || raw.startsWith('Unauthorized') || raw.startsWith('Bad request') || raw.startsWith('Rate limited') || raw.startsWith('Kling API') || raw.includes('Access denied') || raw.includes('account')
+        ? raw  // already friendly
+        : `Generation failed: ${raw}`;
       console.error(`Clip generation failed for clip ${clip.id}:`, errorMessage);
 
       await db.clip.update({

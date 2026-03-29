@@ -46,6 +46,48 @@ function authHeaders() {
   };
 }
 
+// Translate raw axios/HTTP errors into human-readable messages
+function friendlyError(error: unknown): Error {
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
+    const body = error.response?.data;
+    const apiMsg: string =
+      body?.message ?? body?.error ?? body?.msg ?? JSON.stringify(body) ?? '';
+
+    switch (status) {
+      case 400:
+        return new Error(
+          `Bad request to Kling API: ${apiMsg || 'Invalid parameters sent. Check your prompt or aspect ratio.'}`
+        );
+      case 401:
+        return new Error(
+          'Unauthorized: Your KLING_ACCESS_KEY_ID or KLING_SECRET_KEY is incorrect. Check your .env file.'
+        );
+      case 403:
+        return new Error(
+          `Forbidden: Your Kling account does not have access to this model or feature. ` +
+          `Make sure your account plan includes "kling-v2 pro" video generation. ` +
+          (apiMsg ? `API said: ${apiMsg}` : '')
+        );
+      case 429:
+        return new Error(
+          'Rate limited by Kling API: Too many requests. Wait a moment and try again.'
+        );
+      case 500:
+      case 502:
+      case 503:
+        return new Error(
+          `Kling API server error (${status}): The service may be temporarily unavailable. Try again shortly.`
+        );
+      default:
+        return new Error(
+          `Kling API error (HTTP ${status ?? 'unknown'}): ${apiMsg || error.message}`
+        );
+    }
+  }
+  return error instanceof Error ? error : new Error(String(error));
+}
+
 // Poll until task is done, return video URL
 async function pollTask(endpoint: string, taskId: string): Promise<string> {
   const url = `${KLING_API_BASE}${endpoint}/${taskId}`;
@@ -53,7 +95,12 @@ async function pollTask(endpoint: string, taskId: string): Promise<string> {
   for (let attempt = 0; attempt < 120; attempt++) {
     await new Promise((r) => setTimeout(r, 10_000)); // 10s between polls
 
-    const res = await axios.get(url, { headers: authHeaders() });
+    let res;
+    try {
+      res = await axios.get(url, { headers: authHeaders() });
+    } catch (err) {
+      throw friendlyError(err);
+    }
     const data = res.data?.data;
     const status: string = data?.task_status;
 
@@ -89,56 +136,60 @@ class KlingService {
 
     let videoUrl: string;
 
-    if (options.startImagePath && fs.existsSync(options.startImagePath)) {
-      // ── Image-to-video ──────────────────────────────────────────────────────
-      const imageBuffer = fs.readFileSync(options.startImagePath);
-      const imageBase64 = imageBuffer.toString('base64');
-      const ext = path.extname(options.startImagePath).slice(1) || 'png';
+    try {
+      if (options.startImagePath && fs.existsSync(options.startImagePath)) {
+        // ── Image-to-video ────────────────────────────────────────────────────
+        const imageBuffer = fs.readFileSync(options.startImagePath);
+        const imageBase64 = imageBuffer.toString('base64');
+        const ext = path.extname(options.startImagePath).slice(1) || 'png';
 
-      const body = {
-        model_name: 'kling-v2',
-        mode: 'pro',
-        image: `data:image/${ext};base64,${imageBase64}`,
-        prompt: options.prompt,
-        aspect_ratio: aspectRatio,
-        duration,
-      };
+        const body = {
+          model_name: 'kling-v2',
+          mode: 'pro',
+          image: `data:image/${ext};base64,${imageBase64}`,
+          prompt: options.prompt,
+          aspect_ratio: aspectRatio,
+          duration,
+        };
 
-      const res = await axios.post(
-        `${KLING_API_BASE}/v1/videos/image2video`,
-        body,
-        { headers: authHeaders() }
-      );
+        const res = await axios.post(
+          `${KLING_API_BASE}/v1/videos/image2video`,
+          body,
+          { headers: authHeaders() }
+        );
 
-      const taskId: string = res.data?.data?.task_id;
-      if (!taskId) throw new Error('No task_id returned from Kling image2video API');
+        const taskId: string = res.data?.data?.task_id;
+        if (!taskId) throw new Error('No task_id returned from Kling image2video API');
 
-      videoUrl = await pollTask('/v1/videos/image2video', taskId);
-    } else {
-      // ── Text-to-video ───────────────────────────────────────────────────────
-      const body = {
-        model_name: 'kling-v2',
-        mode: 'pro',
-        prompt: options.prompt,
-        aspect_ratio: aspectRatio,
-        duration,
-      };
+        videoUrl = await pollTask('/v1/videos/image2video', taskId);
+      } else {
+        // ── Text-to-video ─────────────────────────────────────────────────────
+        const body = {
+          model_name: 'kling-v2',
+          mode: 'pro',
+          prompt: options.prompt,
+          aspect_ratio: aspectRatio,
+          duration,
+        };
 
-      const res = await axios.post(
-        `${KLING_API_BASE}/v1/videos/text2video`,
-        body,
-        { headers: authHeaders() }
-      );
+        const res = await axios.post(
+          `${KLING_API_BASE}/v1/videos/text2video`,
+          body,
+          { headers: authHeaders() }
+        );
 
-      const taskId: string = res.data?.data?.task_id;
-      if (!taskId) throw new Error('No task_id returned from Kling text2video API');
+        const taskId: string = res.data?.data?.task_id;
+        if (!taskId) throw new Error('No task_id returned from Kling text2video API');
 
-      videoUrl = await pollTask('/v1/videos/text2video', taskId);
+        videoUrl = await pollTask('/v1/videos/text2video', taskId);
+      }
+
+      // Download the generated video
+      const response = await axios({ url: videoUrl, method: 'GET', responseType: 'arraybuffer' });
+      fs.writeFileSync(outputPath, Buffer.from(response.data as ArrayBuffer));
+    } catch (error) {
+      throw friendlyError(error);
     }
-
-    // Download the generated video
-    const response = await axios({ url: videoUrl, method: 'GET', responseType: 'arraybuffer' });
-    fs.writeFileSync(outputPath, Buffer.from(response.data as ArrayBuffer));
   }
 }
 
