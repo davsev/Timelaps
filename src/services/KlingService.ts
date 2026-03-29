@@ -1,18 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
+import jwt from 'jsonwebtoken';
 
-interface KlingOptions {
-  prompt: string;
-  startImagePath?: string; // if provided, use image-to-video
-  aspectRatio: string; // "9:16" or "16:9"
-  duration?: number; // seconds, default 5
-}
+const KLING_API_BASE = 'https://api.klingai.com';
 
-type AspectRatioValue = '9:16' | '16:9' | '1:1' | '4:5';
-
-function mapAspectRatio(ar: string): AspectRatioValue {
-  const mapping: Record<string, AspectRatioValue> = {
+function mapAspectRatio(ar: string): string {
+  const mapping: Record<string, string> = {
     '9:16': '9:16',
     '16:9': '16:9',
     '1:1': '1:1',
@@ -21,59 +15,129 @@ function mapAspectRatio(ar: string): AspectRatioValue {
   return mapping[ar] ?? '9:16';
 }
 
+// Generate a short-lived JWT for Kling API authentication
+function generateToken(): string {
+  const accessKeyId = process.env.KLING_ACCESS_KEY_ID;
+  const secretKey = process.env.KLING_SECRET_KEY;
+
+  if (!accessKeyId || !secretKey) {
+    throw new Error(
+      'Missing KLING_ACCESS_KEY_ID or KLING_SECRET_KEY environment variables'
+    );
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    iss: accessKeyId,
+    exp: now + 1800, // 30 min validity
+    nbf: now - 5,
+  };
+
+  return jwt.sign(payload, secretKey, {
+    algorithm: 'HS256',
+    header: { alg: 'HS256', typ: 'JWT' },
+  } as jwt.SignOptions);
+}
+
+function authHeaders() {
+  return {
+    Authorization: `Bearer ${generateToken()}`,
+    'Content-Type': 'application/json',
+  };
+}
+
+// Poll until task is done, return video URL
+async function pollTask(endpoint: string, taskId: string): Promise<string> {
+  const url = `${KLING_API_BASE}${endpoint}/${taskId}`;
+
+  for (let attempt = 0; attempt < 120; attempt++) {
+    await new Promise((r) => setTimeout(r, 10_000)); // 10s between polls
+
+    const res = await axios.get(url, { headers: authHeaders() });
+    const data = res.data?.data;
+    const status: string = data?.task_status;
+
+    if (status === 'succeed') {
+      const videoUrl: string = data?.task_result?.videos?.[0]?.url;
+      if (!videoUrl) throw new Error('Kling task succeeded but no video URL returned');
+      return videoUrl;
+    }
+
+    if (status === 'failed') {
+      const reason = data?.task_status_msg ?? 'unknown error';
+      throw new Error(`Kling task failed: ${reason}`);
+    }
+    // "processing" or "submitted" — keep polling
+  }
+
+  throw new Error('Kling task timed out after 20 minutes');
+}
+
+interface KlingOptions {
+  prompt: string;
+  startImagePath?: string;
+  aspectRatio: string;
+  duration?: number;
+}
+
 class KlingService {
   async generateVideo(options: KlingOptions, outputPath: string): Promise<void> {
-    const { fal } = await import('@fal-ai/client');
-
-    fal.config({ credentials: process.env.KLING_API_KEY });
-
     const aspectRatio = mapAspectRatio(options.aspectRatio);
     const duration = String(options.duration ?? 5);
 
-    // Ensure output directory exists
-    const dir = path.dirname(outputPath);
-    fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
-    let result: { data: { video: { url: string } } };
+    let videoUrl: string;
 
     if (options.startImagePath && fs.existsSync(options.startImagePath)) {
-      // Image-to-video
+      // ── Image-to-video ──────────────────────────────────────────────────────
       const imageBuffer = fs.readFileSync(options.startImagePath);
-      const file = new File([imageBuffer], 'start-frame.png', { type: 'image/png' });
-      const imageUrl = await fal.storage.upload(file);
+      const imageBase64 = imageBuffer.toString('base64');
+      const ext = path.extname(options.startImagePath).slice(1) || 'png';
 
-      result = (await fal.subscribe('fal-ai/kling-video/v2/pro/image-to-video', {
-        input: {
-          prompt: options.prompt,
-          image_url: imageUrl,
-          aspect_ratio: aspectRatio,
-          duration,
-        },
-        pollInterval: 10000,
-        logs: true,
-      })) as { data: { video: { url: string } } };
+      const body = {
+        model_name: 'kling-v2',
+        mode: 'pro',
+        image: `data:image/${ext};base64,${imageBase64}`,
+        prompt: options.prompt,
+        aspect_ratio: aspectRatio,
+        duration,
+      };
+
+      const res = await axios.post(
+        `${KLING_API_BASE}/v1/videos/image2video`,
+        body,
+        { headers: authHeaders() }
+      );
+
+      const taskId: string = res.data?.data?.task_id;
+      if (!taskId) throw new Error('No task_id returned from Kling image2video API');
+
+      videoUrl = await pollTask('/v1/videos/image2video', taskId);
     } else {
-      // Text-to-video
-      result = (await fal.subscribe('fal-ai/kling-video/v2/pro/text-to-video', {
-        input: {
-          prompt: options.prompt,
-          aspect_ratio: aspectRatio,
-          duration,
-        },
-        pollInterval: 10000,
-        logs: true,
-      })) as { data: { video: { url: string } } };
+      // ── Text-to-video ───────────────────────────────────────────────────────
+      const body = {
+        model_name: 'kling-v2',
+        mode: 'pro',
+        prompt: options.prompt,
+        aspect_ratio: aspectRatio,
+        duration,
+      };
+
+      const res = await axios.post(
+        `${KLING_API_BASE}/v1/videos/text2video`,
+        body,
+        { headers: authHeaders() }
+      );
+
+      const taskId: string = res.data?.data?.task_id;
+      if (!taskId) throw new Error('No task_id returned from Kling text2video API');
+
+      videoUrl = await pollTask('/v1/videos/text2video', taskId);
     }
 
-    const videoUrl = result.data.video.url;
-
-    // Download the video
-    const response = await axios({
-      url: videoUrl,
-      method: 'GET',
-      responseType: 'arraybuffer',
-    });
-
+    // Download the generated video
+    const response = await axios({ url: videoUrl, method: 'GET', responseType: 'arraybuffer' });
     fs.writeFileSync(outputPath, Buffer.from(response.data as ArrayBuffer));
   }
 }
