@@ -33,8 +33,10 @@ export default function ProjectDetail({
   const hasActiveClip = clips.some(
     (c) => c.status === 'pending' || c.status === 'generating_image' || c.status === 'generating_video'
   );
+  const lastClip = clips[clips.length - 1];
+  const lastClipFailed = lastClip?.status === 'error';
   const allStagesGenerated = clips.length >= totalStages;
-  const canGenerateNext = !hasActiveClip && !allStagesGenerated;
+  const canGenerateNext = !hasActiveClip && !allStagesGenerated && !lastClipFailed;
   const canRender = doneClips.length > 0 && !rendering;
   const progressPct = totalStages > 0 ? (doneClips.length / totalStages) * 100 : 0;
   const typeInfo = typeConfig[project.type as ProjectType] ?? typeConfig.generic_transformation;
@@ -95,6 +97,21 @@ export default function ProjectDetail({
         </div>
       </div>
 
+      {/* Failure blocker banner */}
+      {lastClipFailed && (
+        <div className="flex items-start gap-3 bg-red-500/10 border border-red-500/25 rounded-xl px-4 py-3">
+          <svg className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <div>
+            <p className="text-red-300 font-medium text-sm">Stage {(lastClip?.stageIndex ?? 0) + 1} failed</p>
+            <p className="text-red-400/70 text-xs mt-0.5">
+              Fix the error above before generating the next stage. Check your API credentials and try regenerating.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Action Buttons */}
       <div className="flex flex-wrap gap-3">
         <button
@@ -105,6 +122,8 @@ export default function ProjectDetail({
           {generating && <Spinner />}
           {hasActiveClip
             ? '⏳ Generating...'
+            : lastClipFailed
+            ? '❌ Previous Stage Failed'
             : allStagesGenerated
             ? '✅ All Stages Done'
             : `Generate Stage ${clips.length + 1}`}

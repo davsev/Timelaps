@@ -35,6 +35,14 @@ class ClipService {
       );
     }
 
+    // Block progression if the last clip failed
+    const lastClip = project.clips[project.clips.length - 1];
+    if (lastClip && lastClip.status === 'error') {
+      throw new Error(
+        `Stage ${lastClip.stageIndex + 1} failed. Resolve the error before generating the next stage.`
+      );
+    }
+
     const stageDescription = stages[nextIndex];
     const prevStageDescription = nextIndex > 0 ? stages[nextIndex - 1] : stages[0];
 
