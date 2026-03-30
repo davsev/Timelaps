@@ -3,15 +3,19 @@ import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import ffmpegStatic from 'ffmpeg-static';
 
 const execAsync = promisify(exec);
+
+// Use bundled ffmpeg binary so no system install is required
+const FFMPEG = ffmpegStatic ?? 'ffmpeg';
 
 class FfmpegService {
   /**
    * Extract the last frame of a video as PNG
    */
   async extractLastFrame(videoPath: string, outputPath: string): Promise<void> {
-    const cmd = `ffmpeg -sseof -3 -i "${videoPath}" -update 1 -q:v 1 "${outputPath}" -y`;
+    const cmd = `"${FFMPEG}" -sseof -3 -i "${videoPath}" -update 1 -q:v 1 "${outputPath}" -y`;
     try {
       await execAsync(cmd);
     } catch (error) {
@@ -40,7 +44,7 @@ class FfmpegService {
     fs.writeFileSync(concatFile, concatContent, 'utf8');
 
     try {
-      const cmd = `ffmpeg -f concat -safe 0 -i "${concatFile}" -c copy "${outputPath}" -y`;
+      const cmd = `"${FFMPEG}" -f concat -safe 0 -i "${concatFile}" -c copy "${outputPath}" -y`;
       await execAsync(cmd);
     } finally {
       // Clean up temp file
@@ -60,7 +64,7 @@ class FfmpegService {
     musicPath: string,
     outputPath: string
   ): Promise<void> {
-    const cmd = `ffmpeg -i "${videoPath}" -i "${musicPath}" -filter_complex "[1:a]volume=0.3[a]" -map 0:v -map "[a]" -c:v copy -c:a aac -shortest "${outputPath}" -y`;
+    const cmd = `"${FFMPEG}" -i "${videoPath}" -i "${musicPath}" -filter_complex "[1:a]volume=0.3[a]" -map 0:v -map "[a]" -c:v copy -c:a aac -shortest "${outputPath}" -y`;
     try {
       await execAsync(cmd);
     } catch (error) {
