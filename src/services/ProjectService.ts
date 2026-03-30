@@ -41,10 +41,6 @@ class ProjectService {
       },
     });
 
-    // Fire-and-forget first clip generation
-    const { clipService } = await import('./ClipService');
-    clipService.generateNextClip(project.id).catch(console.error);
-
     return project;
   }
 
