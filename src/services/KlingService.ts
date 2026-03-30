@@ -143,12 +143,11 @@ class KlingService {
         // ── Image-to-video ────────────────────────────────────────────────────
         const imageBuffer = fs.readFileSync(options.startImagePath);
         const imageBase64 = imageBuffer.toString('base64');
-        const ext = path.extname(options.startImagePath).slice(1) || 'png';
 
         const body = {
           model_name: KLING_MODEL,
           mode: KLING_MODE,
-          image: `data:image/${ext};base64,${imageBase64}`,
+          image: imageBase64,
           prompt: options.prompt,
           aspect_ratio: aspectRatio,
           duration,
