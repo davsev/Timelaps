@@ -102,7 +102,11 @@ export default function ClipCard({ clip, onRetry }: ClipCardProps & { onRetry?: 
             />
           </div>
           <p className="text-xs text-gray-600 mt-1.5">
-            {status === 'generating_image' ? 'Generating starting frame...' : 'Creating video with Kling AI...'}
+            {status === 'generating_image'
+              ? clip.stageIndex === 0
+                ? 'Generating starting image with Fal.ai...'
+                : 'Extracting last frame from previous clip...'
+              : 'Creating video with Kling AI...'}
           </p>
         </div>
       )}
