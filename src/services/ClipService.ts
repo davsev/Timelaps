@@ -69,7 +69,9 @@ class ClipService {
     });
 
     // Fire image generation for all pending stages
-    this.runAllImageGenerations(clips, project).catch(console.error);
+    this.runAllImageGenerations(clips, project).catch((err) => {
+      console.error('[ClipService] runAllImageGenerations crashed:', err);
+    });
 
     return clips;
   }
