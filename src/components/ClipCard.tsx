@@ -52,6 +52,9 @@ export default function ClipCard({ clip, onRetry }: ClipCardProps & { onRetry?: 
   const [showPrompts, setShowPrompts] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const status = clip.status as ClipStatus;
+  const isStuck =
+    (status === 'generating_image' || status === 'generating_video') &&
+    Date.now() - new Date(clip.createdAt).getTime() > 25 * 60 * 1000;
 
   async function handleRetry() {
     setRetrying(true);
@@ -111,18 +114,19 @@ export default function ClipCard({ clip, onRetry }: ClipCardProps & { onRetry?: 
               </p>
             </div>
           )}
-          <button
-            onClick={handleRetry}
-            disabled={retrying}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/15 hover:bg-red-500/25 border border-red-500/20 text-red-300 text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {retrying ? <SpinnerIcon /> : (
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            )}
-            {retrying ? 'Retrying...' : 'Retry this stage'}
-          </button>
+          <RetryButton retrying={retrying} onRetry={handleRetry} label="Retry this stage" />
+        </div>
+      )}
+
+      {/* Stuck in generating */}
+      {isStuck && (
+        <div className="mx-4 mb-3 space-y-2">
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
+            <p className="text-amber-300 text-xs leading-relaxed">
+              Generation is taking longer than expected. The background task may have been interrupted.
+            </p>
+          </div>
+          <RetryButton retrying={retrying} onRetry={handleRetry} label="Force retry" />
         </div>
       )}
 
@@ -164,6 +168,23 @@ export default function ClipCard({ clip, onRetry }: ClipCardProps & { onRetry?: 
       </div>
 
     </div>
+  );
+}
+
+function RetryButton({ retrying, onRetry, label }: { retrying: boolean; onRetry: () => void; label: string }) {
+  return (
+    <button
+      onClick={onRetry}
+      disabled={retrying}
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/15 hover:bg-red-500/25 border border-red-500/20 text-red-300 text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      {retrying ? <SpinnerIcon /> : (
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+      )}
+      {retrying ? 'Retrying...' : label}
+    </button>
   );
 }
 

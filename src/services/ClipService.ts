@@ -12,6 +12,20 @@ import { klingService } from './KlingService';
 import { ffmpegService } from './FfmpegService';
 
 class ClipService {
+  constructor() {
+    // On startup, reset any clips that were left mid-generation (server restart)
+    this.recoverStuckClips().catch(console.error);
+  }
+
+  private async recoverStuckClips(): Promise<void> {
+    const stuck = await db.clip.updateMany({
+      where: { status: { in: ['pending', 'generating_image', 'generating_video'] } },
+      data: { status: 'error', errorMessage: 'Generation was interrupted (server restarted). Click Retry to try again.' },
+    });
+    if (stuck.count > 0) {
+      console.log(`[ClipService] Reset ${stuck.count} stuck clip(s) to error state`);
+    }
+  }
   /**
    * Determine the next stage index for the project and create a clip record,
    * then trigger async generation. Returns the created clip immediately.
@@ -173,7 +187,7 @@ class ClipService {
     });
 
     if (!clip) throw new Error(`Clip not found: ${clipId}`);
-    if (clip.status !== 'error') throw new Error('Only failed clips can be retried');
+    if (clip.status === 'done') throw new Error('Clip already completed successfully');
 
     const updated = await db.clip.update({
       where: { id: clipId },
