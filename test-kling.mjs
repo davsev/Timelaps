@@ -17,12 +17,12 @@ try {
 }
 
 const accessKeyId = process.env.KLING_ACCESS_KEY_ID;
-const secretKey = process.env.KLING_SECRET_KEY;
+const secretKey = process.env.KLING_ACCESS_KEY_SECRET ?? process.env.KLING_SECRET_KEY;
 const model = process.env.KLING_MODEL ?? 'kling-v1-6';
 const mode = process.env.KLING_MODE ?? 'std';
 
 if (!accessKeyId || !secretKey) {
-  console.error('Missing KLING_ACCESS_KEY_ID or KLING_SECRET_KEY in .env');
+  console.error('Missing KLING_ACCESS_KEY_ID or KLING_ACCESS_KEY_SECRET in .env');
   process.exit(1);
 }
 

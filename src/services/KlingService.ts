@@ -20,11 +20,11 @@ function mapAspectRatio(ar: string): string {
 // Generate a short-lived JWT for Kling API authentication
 function generateToken(): string {
   const accessKeyId = process.env.KLING_ACCESS_KEY_ID;
-  const secretKey = process.env.KLING_SECRET_KEY;
+  const secretKey = process.env.KLING_ACCESS_KEY_SECRET ?? process.env.KLING_SECRET_KEY;
 
   if (!accessKeyId || !secretKey) {
     throw new Error(
-      'Missing KLING_ACCESS_KEY_ID or KLING_SECRET_KEY environment variables'
+      'Missing KLING_ACCESS_KEY_ID or KLING_ACCESS_KEY_SECRET environment variables'
     );
   }
 
