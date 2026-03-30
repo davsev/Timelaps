@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import HeaderStats from '@/components/HeaderStats';
 
 export const metadata: Metadata = {
   title: 'TimeLaps — AI Architectural Timelapse Generator',
@@ -27,10 +28,8 @@ export default function RootLayout({
               </div>
               <span className="font-bold text-xl tracking-tight gradient-text">TimeLaps</span>
             </a>
-            <div className="flex items-center gap-4">
-              <span className="text-gray-500 text-sm hidden sm:block font-medium">
-                AI Architectural Timelapse
-              </span>
+            <div className="flex items-center gap-3">
+              <HeaderStats />
               <a
                 href="/"
                 className="text-sm text-gray-400 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5"
