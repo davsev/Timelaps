@@ -165,7 +165,6 @@ class ClipService {
       });
     }
   }
-}
 
   async retryClip(clipId: string): Promise<Clip> {
     const clip = await db.clip.findUnique({
@@ -188,3 +187,4 @@ class ClipService {
 }
 
 export const clipService = new ClipService();
+
