@@ -24,18 +24,22 @@ model Project {
 }
 
 model Clip {
-  id               String   @id @default(uuid())
-  projectId        String
-  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  stageIndex       Int
-  ideaTitle        String
-  stageDescription String
-  masterPrompt     String
-  imagePrompt      String
-  klingPrompt      String
-  startImagePath   String?
-  videoPath        String?
-  status           String   @default("pending")
-  errorMessage     String?
-  createdAt        DateTime @default(now())
+  id                String   @id @default(uuid())
+  projectId         String
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stageIndex        Int
+  ideaTitle         String
+  stageDescription  String
+  masterPrompt      String
+  imagePrompt       String
+  klingPrompt       String
+  // Phase 1: generated stage image (AI image of this stage's final state)
+  startImagePath    String?
+  imageStatus       String   @default("pending")   // pending/generating/done/error
+  imageErrorMessage String?
+  // Phase 2: video transitioning FROM previous stage TO this stage
+  videoPath         String?
+  status            String   @default("pending")   // pending/generating_video/done/error
+  errorMessage      String?
+  createdAt         DateTime @default(now())
 }

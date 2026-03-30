@@ -17,7 +17,8 @@ export default function ProjectPage() {
   const [project, setProject] = useState<ProjectWithClips | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(false);
+  const [generatingImages, setGeneratingImages] = useState(false);
+  const [generatingVideos, setGeneratingVideos] = useState(false);
   const [rendering, setRendering] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -38,16 +39,13 @@ export default function ProjectPage() {
 
   function startPolling() {
     if (pollingRef.current) return;
-    pollingRef.current = setInterval(() => {
-      fetchProject(true);
-    }, 3000);
+    pollingRef.current = setInterval(() => fetchProject(true), 3000);
   }
 
   function shouldPoll(clips: Clip[]): boolean {
     return clips.some(
       (c) =>
-        c.status === 'pending' ||
-        c.status === 'generating_image' ||
+        c.imageStatus === 'generating' ||
         c.status === 'generating_video'
     );
   }
@@ -57,21 +55,14 @@ export default function ProjectPage() {
       if (!silent) setLoading(true);
       const res = await fetch(`/api/projects/${id}`);
       if (!res.ok) {
-        if (res.status === 404) {
-          router.push('/');
-          return;
-        }
+        if (res.status === 404) { router.push('/'); return; }
         throw new Error('Failed to load project');
       }
       const data: ProjectWithClips = await res.json();
       setProject(data);
       setError(null);
-
-      if (shouldPoll(data.clips)) {
-        startPolling();
-      } else {
-        stopPolling();
-      }
+      if (shouldPoll(data.clips)) startPolling();
+      else stopPolling();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load project');
     } finally {
@@ -79,46 +70,86 @@ export default function ProjectPage() {
     }
   }
 
-  async function handleGenerateNext() {
-    if (!project) return;
-    setGenerating(true);
+  async function handleGenerateImages() {
+    setGeneratingImages(true);
     setActionError(null);
     try {
-      const res = await fetch(`/api/projects/${id}/clips`, {
-        method: 'POST',
-      });
+      const res = await fetch(`/api/projects/${id}/generate-images`, { method: 'POST' });
       if (!res.ok) {
         const body = await res.json();
-        throw new Error(body.error || 'Failed to generate clip');
+        throw new Error(body.error || 'Failed to start image generation');
       }
-      // Refresh and start polling
       await fetchProject(true);
       startPolling();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to generate clip');
+      setActionError(err instanceof Error ? err.message : 'Failed to generate images');
     } finally {
-      setGenerating(false);
+      setGeneratingImages(false);
+    }
+  }
+
+  async function handleGenerateVideos() {
+    setGeneratingVideos(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/projects/${id}/generate-videos`, { method: 'POST' });
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error || 'Failed to start video generation');
+      }
+      await fetchProject(true);
+      startPolling();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to generate videos');
+    } finally {
+      setGeneratingVideos(false);
     }
   }
 
   async function handleRenderTimelapse() {
-    if (!project) return;
     setRendering(true);
     setActionError(null);
     try {
-      const res = await fetch(`/api/projects/${id}/render`, {
-        method: 'POST',
-      });
+      const res = await fetch(`/api/projects/${id}/render`, { method: 'POST' });
       if (!res.ok) {
         const body = await res.json();
         throw new Error(body.error || 'Failed to render timelapse');
       }
-      // Refresh to update finalVideoExists
       await fetchProject(true);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to render timelapse');
     } finally {
       setRendering(false);
+    }
+  }
+
+  async function handleRetryImage(clipId: string) {
+    setActionError(null);
+    try {
+      await fetch(`/api/clips/${clipId}/retry`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phase: 'image' }),
+      });
+      await fetchProject(true);
+      startPolling();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Retry failed');
+    }
+  }
+
+  async function handleRetryVideo(clipId: string) {
+    setActionError(null);
+    try {
+      await fetch(`/api/clips/${clipId}/retry`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phase: 'video' }),
+      });
+      await fetchProject(true);
+      startPolling();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Retry failed');
     }
   }
 
@@ -129,7 +160,7 @@ export default function ProjectPage() {
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
-        Loading project...
+        Loading project…
       </div>
     );
   }
@@ -138,10 +169,7 @@ export default function ProjectPage() {
     return (
       <div className="text-center py-20">
         <p className="text-red-400 mb-4">{error || 'Project not found'}</p>
-        <button
-          onClick={() => router.push('/')}
-          className="text-blue-400 hover:text-blue-300 underline"
-        >
+        <button onClick={() => router.push('/')} className="text-blue-400 hover:text-blue-300 underline">
           Back to Dashboard
         </button>
       </div>
@@ -162,20 +190,18 @@ export default function ProjectPage() {
         </button>
       </div>
 
-      {actionError && (
-        <div className="mb-6 bg-red-900/40 border border-red-700 rounded-lg p-4 text-red-300">
-          {actionError}
-        </div>
-      )}
-
       <ProjectDetail
         project={project}
         clips={project.clips}
-        onGenerateNext={handleGenerateNext}
+        onGenerateImages={handleGenerateImages}
+        onGenerateVideos={handleGenerateVideos}
         onRenderTimelapse={handleRenderTimelapse}
-        onRetry={() => { fetchProject(true); startPolling(); }}
-        generating={generating}
+        onRetryImage={handleRetryImage}
+        onRetryVideo={handleRetryVideo}
+        generatingImages={generatingImages}
+        generatingVideos={generatingVideos}
         rendering={rendering}
+        actionError={actionError}
       />
     </div>
   );

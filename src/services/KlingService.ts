@@ -124,7 +124,10 @@ async function pollTask(endpoint: string, taskId: string): Promise<string> {
 
 interface KlingOptions {
   prompt: string;
+  /** Start frame image (image2video start) */
   startImagePath?: string;
+  /** End frame image (image_tail — guides where the video ends up) */
+  endImagePath?: string;
   aspectRatio: string;
   duration?: number;
 }
@@ -141,10 +144,9 @@ class KlingService {
     try {
       if (options.startImagePath && fs.existsSync(options.startImagePath)) {
         // ── Image-to-video ────────────────────────────────────────────────────
-        const imageBuffer = fs.readFileSync(options.startImagePath);
-        const imageBase64 = imageBuffer.toString('base64');
+        const imageBase64 = fs.readFileSync(options.startImagePath).toString('base64');
 
-        const body = {
+        const body: Record<string, unknown> = {
           model_name: KLING_MODEL,
           mode: KLING_MODE,
           image: imageBase64,
@@ -152,6 +154,11 @@ class KlingService {
           aspect_ratio: aspectRatio,
           duration,
         };
+
+        // Add end-frame if provided (guides the video toward this image)
+        if (options.endImagePath && fs.existsSync(options.endImagePath)) {
+          body.image_tail = fs.readFileSync(options.endImagePath).toString('base64');
+        }
 
         const res = await axios.post(
           `${KLING_API_BASE}/v1/videos/image2video`,

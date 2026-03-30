@@ -2,11 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { clipService } from '@/services/ClipService';
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const clip = await clipService.retryClip(params.id);
+    const body = await req.json().catch(() => ({}));
+    const phase = body?.phase === 'video' ? 'video' : 'image';
+
+    const clip =
+      phase === 'video'
+        ? await clipService.retryVideoGeneration(params.id)
+        : await clipService.retryImageGeneration(params.id);
+
     return NextResponse.json(clip);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

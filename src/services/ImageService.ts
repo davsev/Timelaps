@@ -3,7 +3,6 @@ import path from 'path';
 import axios from 'axios';
 import { fal } from '@fal-ai/client';
 
-// Map project aspect ratios to Fal.ai image_size values
 function mapAspectRatio(ar: string): string {
   const mapping: Record<string, string> = {
     '9:16': 'portrait_16_9',
@@ -14,63 +13,72 @@ function mapAspectRatio(ar: string): string {
   return mapping[ar] ?? 'portrait_16_9';
 }
 
+function getFalClient() {
+  const key = process.env.FAL_KEY;
+  if (!key) throw new Error('FAL_KEY environment variable is not set');
+  fal.config({ credentials: key });
+  return fal;
+}
+
+async function downloadToFile(url: string, outputPath: string): Promise<void> {
+  const response = await axios({ url, method: 'GET', responseType: 'arraybuffer' });
+  fs.writeFileSync(outputPath, Buffer.from(response.data as ArrayBuffer));
+}
+
 class ImageService {
-  async generateImage(prompt: string, aspectRatio: string, outputPath: string): Promise<void> {
-    const dir = path.dirname(outputPath);
-    fs.mkdirSync(dir, { recursive: true });
+  /**
+   * Stage 0: generate the bare starting image from a text prompt.
+   */
+  async generateFromText(prompt: string, aspectRatio: string, outputPath: string): Promise<void> {
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+    const client = getFalClient();
 
-    const falKey = process.env.FAL_KEY;
-    if (!falKey) {
-      console.warn('FAL_KEY not set — using placeholder image');
-      await this.writePlaceholder(outputPath, aspectRatio);
-      return;
-    }
+    const result = await client.subscribe('fal-ai/flux/schnell', {
+      input: {
+        prompt,
+        image_size: mapAspectRatio(aspectRatio),
+        num_inference_steps: 4,
+        num_images: 1,
+        enable_safety_checker: false,
+      },
+    });
 
-    fal.config({ credentials: falKey });
-
-    try {
-      const result = await fal.subscribe('fal-ai/flux/schnell', {
-        input: {
-          prompt,
-          image_size: mapAspectRatio(aspectRatio),
-          num_inference_steps: 4,
-          num_images: 1,
-          enable_safety_checker: false,
-        },
-      });
-
-      const imageUrl: string = (result.data as any)?.images?.[0]?.url;
-      if (!imageUrl) throw new Error('Fal.ai returned no image URL');
-
-      // Download the image to disk
-      const response = await axios({ url: imageUrl, method: 'GET', responseType: 'arraybuffer' });
-      fs.writeFileSync(outputPath, Buffer.from(response.data as ArrayBuffer));
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      throw new Error(`Image generation failed: ${msg}`);
-    }
+    const imageUrl: string = (result.data as any)?.images?.[0]?.url;
+    if (!imageUrl) throw new Error('Fal.ai (flux/schnell) returned no image URL');
+    await downloadToFile(imageUrl, outputPath);
   }
 
-  private async writePlaceholder(outputPath: string, aspectRatio: string): Promise<void> {
-    const width = aspectRatio === '9:16' ? 576 : 1024;
-    const height = aspectRatio === '9:16' ? 1024 : 576;
-    try {
-      const sharp = (await import('sharp')).default;
-      await sharp({
-        create: { width, height, channels: 3, background: { r: 30, g: 60, b: 90 } },
-      })
-        .png()
-        .toFile(outputPath);
-    } catch {
-      fs.writeFileSync(
-        outputPath,
-        Buffer.from(
-          '89504e470d0a1a0a0000000d49484452000000010000000108020000009001' +
-          '2e00000000c4944415478016360f8cfc00000000200013e4f6900000000049454e44ae426082',
-          'hex'
-        )
-      );
-    }
+  /**
+   * Stages 1+: edit the previous stage image, adding the new elements described
+   * in `diffDescription`. Uses flux-pro/kontext for consistent context-aware editing.
+   */
+  async generateFromImage(
+    prevImagePath: string,
+    diffDescription: string,
+    aspectRatio: string,
+    outputPath: string
+  ): Promise<void> {
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+    const client = getFalClient();
+
+    // Upload the previous image to Fal.ai storage to get a URL
+    const imageBuffer = fs.readFileSync(prevImagePath);
+    const imageBlob = new Blob([imageBuffer], { type: 'image/png' });
+    const imageUrl = await client.storage.upload(imageBlob);
+
+    const result = await client.subscribe('fal-ai/flux-pro/kontext', {
+      input: {
+        prompt: diffDescription,
+        image_url: imageUrl,
+        guidance_scale: 3.5,
+        num_images: 1,
+        output_format: 'png',
+      },
+    });
+
+    const outputUrl: string = (result.data as any)?.images?.[0]?.url;
+    if (!outputUrl) throw new Error('Fal.ai (flux-pro/kontext) returned no image URL');
+    await downloadToFile(outputUrl, outputPath);
   }
 }
 

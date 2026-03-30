@@ -1,222 +1,400 @@
 'use client';
 
 import { Clip, Project } from '@prisma/client';
-import { stageDescriptions, ProjectType } from '@/lib/templates';
-import ClipCard from './ClipCard';
+import { stageDefinitions, ProjectType } from '@/lib/templates';
 
 interface ProjectDetailProps {
   project: Project & { finalVideoExists: boolean };
   clips: Clip[];
-  onGenerateNext: () => void;
+  onGenerateImages: () => void;
+  onGenerateVideos: () => void;
   onRenderTimelapse: () => void;
-  onRetry: () => void;
-  generating: boolean;
+  onRetryImage: (clipId: string) => void;
+  onRetryVideo: (clipId: string) => void;
+  generatingImages: boolean;
+  generatingVideos: boolean;
   rendering: boolean;
+  actionError: string | null;
 }
-
-const typeConfig: Record<ProjectType, { label: string; icon: string; color: string }> = {
-  exterior_construction: { label: 'Exterior Construction', icon: '🏗️', color: 'text-amber-400' },
-  interior_renovation: { label: 'Interior Renovation', icon: '🛋️', color: 'text-teal-400' },
-  generic_transformation: { label: 'Transformation', icon: '✨', color: 'text-violet-400' },
-};
 
 export default function ProjectDetail({
   project,
   clips,
-  onGenerateNext,
+  onGenerateImages,
+  onGenerateVideos,
   onRenderTimelapse,
-  onRetry,
-  generating,
+  onRetryImage,
+  onRetryVideo,
+  generatingImages,
+  generatingVideos,
   rendering,
+  actionError,
 }: ProjectDetailProps) {
-  const stages = stageDescriptions[project.type as ProjectType] ?? [];
+  const stages = stageDefinitions[project.type as ProjectType] ?? stageDefinitions.generic_transformation;
   const totalStages = stages.length;
-  const doneClips = clips.filter((c) => c.status === 'done');
-  const hasActiveClip = clips.some(
-    (c) => c.status === 'pending' || c.status === 'generating_image' || c.status === 'generating_video'
-  );
-  const lastClip = clips[clips.length - 1];
-  const lastClipFailed = lastClip?.status === 'error';
-  const allStagesGenerated = clips.length >= totalStages;
-  const canGenerateNext = !hasActiveClip && !allStagesGenerated && !lastClipFailed;
-  const canRender = doneClips.length > 0 && !rendering;
-  const progressPct = totalStages > 0 ? (doneClips.length / totalStages) * 100 : 0;
-  const typeInfo = typeConfig[project.type as ProjectType] ?? typeConfig.generic_transformation;
+
+  const allImagesGenerated = clips.length === totalStages && clips.every((c) => c.imageStatus === 'done');
+  const anyImageError = clips.some((c) => c.imageStatus === 'error');
+  const imagesBusy = clips.some((c) => c.imageStatus === 'generating');
+
+  const videoClips = clips.filter((c) => c.stageIndex > 0);
+  const allVideosGenerated = videoClips.length === totalStages - 1 && videoClips.every((c) => c.status === 'done');
+  const anyVideoError = videoClips.some((c) => c.status === 'error');
+  const videosBusy = videoClips.some((c) => c.status === 'generating_video');
+
+  const canGenerateImages = !imagesBusy && !allImagesGenerated;
+  const canGenerateVideos = allImagesGenerated && !videosBusy && !allVideosGenerated;
+  const canRender = videoClips.some((c) => c.status === 'done') && !rendering;
+
+  const doneImages = clips.filter((c) => c.imageStatus === 'done').length;
+  const doneVideos = videoClips.filter((c) => c.status === 'done').length;
 
   return (
-    <div className="animate-fade-in space-y-6">
-      {/* Project Info Card */}
+    <div className="animate-fade-in space-y-8">
+      {/* Project header */}
       <div className="glass-card rounded-2xl p-6">
-        <div className="flex items-start justify-between gap-4 flex-wrap mb-5">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xl">{typeInfo.icon}</span>
-              <span className={`text-xs font-medium ${typeInfo.color}`}>{typeInfo.label}</span>
-            </div>
-            <h1 className="text-2xl font-bold text-white mb-1.5 leading-tight">{project.name}</h1>
-            <p className="text-gray-400 text-sm leading-relaxed">{project.description}</p>
-          </div>
-
-          <div className="flex flex-col items-end gap-2 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="text-gray-600 bg-white/[0.04] px-2.5 py-1 rounded-lg border border-white/[0.06]">
-                {project.aspectRatio}
-              </span>
-              <span className="text-gray-600 bg-white/[0.04] px-2.5 py-1 rounded-lg border border-white/[0.06]">
-                {project.style}
-              </span>
-            </div>
-            <span className="text-gray-700 font-mono text-xs">seed {project.seed}</span>
-          </div>
-        </div>
-
-        {/* Progress */}
-        <div>
-          <div className="flex items-center justify-between text-xs mb-2">
-            <span className="text-gray-500 font-medium">Generation Progress</span>
-            <span className="text-gray-400 font-semibold">
-              {doneClips.length} / {totalStages} stages
-            </span>
-          </div>
-          <div className="h-2 bg-white/[0.05] rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-700 ease-out"
-              style={{
-                width: `${progressPct}%`,
-                background: 'linear-gradient(90deg, #6366f1, #8b5cf6)',
-              }}
-            />
-          </div>
-          {hasActiveClip && (
-            <p className="text-xs text-indigo-400 mt-1.5 flex items-center gap-1.5">
-              <svg className="animate-spin w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              Generation in progress...
-            </p>
-          )}
+        <h1 className="text-2xl font-bold text-white mb-1">{project.name}</h1>
+        <p className="text-gray-400 text-sm">{project.description}</p>
+        <div className="flex gap-2 mt-3 text-xs">
+          <span className="bg-white/[0.04] border border-white/[0.06] px-2.5 py-1 rounded-lg text-gray-500">{project.aspectRatio}</span>
+          <span className="bg-white/[0.04] border border-white/[0.06] px-2.5 py-1 rounded-lg text-gray-500">{project.style}</span>
         </div>
       </div>
 
-      {/* Failure blocker banner */}
-      {lastClipFailed && (
-        <div className="flex items-start gap-3 bg-red-500/10 border border-red-500/25 rounded-xl px-4 py-3">
-          <svg className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      {actionError && (
+        <div className="flex items-start gap-3 bg-red-500/10 border border-red-500/25 rounded-xl px-4 py-3 text-red-300 text-sm">
+          <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <div>
-            <p className="text-red-300 font-medium text-sm">Stage {(lastClip?.stageIndex ?? 0) + 1} failed</p>
-            <p className="text-red-400/70 text-xs mt-0.5">
-              Fix the error above before generating the next stage. Check your API credentials and try regenerating.
-            </p>
-          </div>
+          {actionError}
         </div>
       )}
 
-      {/* Action Buttons */}
-      <div className="flex flex-wrap gap-3">
-        <button
-          onClick={onGenerateNext}
-          disabled={!canGenerateNext || generating}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent-gradient text-white font-semibold hover:opacity-90 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-glow-indigo text-sm"
-        >
-          {generating && <Spinner />}
-          {hasActiveClip
-            ? '⏳ Generating...'
-            : lastClipFailed
-            ? '❌ Previous Stage Failed'
-            : allStagesGenerated
-            ? '✅ All Stages Done'
-            : `Generate Stage ${clips.length + 1}`}
-        </button>
+      {/* ── Phase 1: Images ─────────────────────────────────────────────── */}
+      <section>
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <div>
+            <h2 className="text-white font-semibold text-base flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-300 text-xs font-bold flex items-center justify-center">1</span>
+              Stage Images
+            </h2>
+            <p className="text-gray-500 text-xs mt-0.5">AI generates each stage of the renovation</p>
+          </div>
 
-        <button
-          onClick={onRenderTimelapse}
-          disabled={!canRender}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed text-sm"
-        >
-          {rendering && <Spinner />}
-          {rendering ? 'Rendering...' : (
-            <>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
-              </svg>
-              Render Full Timelapse
-            </>
-          )}
-        </button>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-600">{doneImages}/{totalStages} done</span>
+            <button
+              onClick={onGenerateImages}
+              disabled={!canGenerateImages || generatingImages}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent-gradient text-white text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-glow-indigo"
+            >
+              {(generatingImages || imagesBusy) && <Spinner />}
+              {imagesBusy ? 'Generating images…' : allImagesGenerated ? '✅ All images done' : 'Generate All Images'}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+          {stages.map((stage, i) => {
+            const clip = clips.find((c) => c.stageIndex === i);
+            return (
+              <StageImageCard
+                key={i}
+                stageIndex={i}
+                description={stage.description}
+                clip={clip}
+                onRetry={onRetryImage}
+              />
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ── Phase 2: Videos ─────────────────────────────────────────────── */}
+      <section>
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <div>
+            <h2 className="text-white font-semibold text-base flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-violet-500/20 text-violet-300 text-xs font-bold flex items-center justify-center">2</span>
+              Transition Videos
+            </h2>
+            <p className="text-gray-500 text-xs mt-0.5">Kling AI animates workers transforming each stage</p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-600">{doneVideos}/{totalStages - 1} done</span>
+            <button
+              onClick={onGenerateVideos}
+              disabled={!canGenerateVideos || generatingVideos}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {(generatingVideos || videosBusy) && <Spinner />}
+              {videosBusy
+                ? 'Generating videos…'
+                : !allImagesGenerated
+                ? '🔒 Generate images first'
+                : allVideosGenerated
+                ? '✅ All videos done'
+                : 'Generate All Videos'}
+            </button>
+          </div>
+        </div>
+
+        {anyVideoError && (
+          <div className="mb-3 flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-red-300 text-xs">
+            <svg className="w-4 h-4 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            A video failed. Click Retry on the failed card below to try again.
+          </div>
+        )}
+
+        <div className="space-y-3">
+          {stages.slice(1).map((stage, i) => {
+            const stageIndex = i + 1;
+            const clip = clips.find((c) => c.stageIndex === stageIndex);
+            const prevClip = clips.find((c) => c.stageIndex === stageIndex - 1);
+            return (
+              <VideoClipCard
+                key={stageIndex}
+                stageIndex={stageIndex}
+                description={stage.description}
+                videoPrompt={stage.videoPrompt ?? ''}
+                clip={clip}
+                prevClip={prevClip}
+                onRetry={onRetryVideo}
+              />
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ── Phase 3: Final render ───────────────────────────────────────── */}
+      <section>
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <div>
+            <h2 className="text-white font-semibold text-base flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold flex items-center justify-center">3</span>
+              Final Timelapse
+            </h2>
+            <p className="text-gray-500 text-xs mt-0.5">Concatenate all videos into one MP4</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onRenderTimelapse}
+              disabled={!canRender}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {rendering && <Spinner />}
+              {rendering ? 'Rendering…' : 'Render Final Video'}
+            </button>
+            {project.finalVideoExists && (
+              <a
+                href={`/api/projects/${project.id}/final-video`}
+                download
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] text-white text-sm font-semibold transition-all"
+              >
+                Download MP4
+              </a>
+            )}
+          </div>
+        </div>
 
         {project.finalVideoExists && (
-          <a
-            href={`/api/projects/${project.id}/final-video`}
-            download
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition-all text-sm"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          <div className="glass-card rounded-2xl overflow-hidden">
+            <video
+              controls
+              className="w-full max-h-[500px] bg-black"
+              src={`/api/projects/${project.id}/final-video`}
+            />
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+// ─── Stage image card ─────────────────────────────────────────────────────────
+
+function StageImageCard({
+  stageIndex,
+  description,
+  clip,
+  onRetry,
+}: {
+  stageIndex: number;
+  description: string;
+  clip?: Clip;
+  onRetry: (id: string) => void;
+}) {
+  const status = clip?.imageStatus ?? 'pending';
+  const isGenerating = status === 'generating';
+  const isDone = status === 'done';
+  const isError = status === 'error';
+
+  return (
+    <div
+      data-stage-index={stageIndex}
+      className="glass-card rounded-xl overflow-hidden flex flex-col"
+    >
+      {/* Image area */}
+      <div className="aspect-[9/16] bg-black/40 relative flex items-center justify-center">
+        {isDone && clip?.startImagePath ? (
+          <img
+            src={`/api/clips/${clip.id}/image`}
+            alt={`Stage ${stageIndex + 1}`}
+            className="w-full h-full object-cover"
+          />
+        ) : isGenerating ? (
+          <div className="flex flex-col items-center gap-2 text-indigo-400">
+            <Spinner className="w-6 h-6" />
+            <span className="text-xs">Generating…</span>
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center gap-2 text-red-400 p-3 text-center">
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
-            Download Final Video
-          </a>
+            <span className="text-xs">Failed</span>
+          </div>
+        ) : (
+          <div className="text-gray-700 text-xs text-center px-2">
+            <span className="text-2xl block mb-1">🖼</span>
+            Stage {stageIndex + 1}
+          </div>
         )}
       </div>
 
-      {/* Final Video Player */}
-      {project.finalVideoExists && (
-        <div className="glass-card rounded-2xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-white/[0.06] flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-emerald-400" />
-            <h2 className="text-white font-semibold text-sm">Final Timelapse</h2>
-          </div>
-          <div className="p-4">
-            <video
-              controls
-              className="w-full rounded-xl bg-black max-h-[500px]"
-              src={`/api/projects/${project.id}/final-video`}
-              poster=""
-            >
-              Your browser does not support the video tag.
-            </video>
-          </div>
-        </div>
-      )}
-
-      {/* Clips Grid */}
-      <div>
-        <div className="flex items-center gap-3 mb-4">
-          <h2 className="text-white font-semibold text-base">
-            Clips
-          </h2>
-          <span className="text-xs text-gray-600 bg-white/[0.04] px-2.5 py-1 rounded-full border border-white/[0.06]">
-            {clips.length}/{totalStages} stages
-          </span>
-        </div>
-
-        {clips.length === 0 ? (
-          <div className="glass-card rounded-xl py-12 text-center">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-500/10 mb-4">
-              <svg className="animate-spin w-6 h-6 text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-            </div>
-            <p className="text-gray-500 text-sm">Generating first stage clip...</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {clips.map((clip) => (
-              <ClipCard key={clip.id} clip={clip} onRetry={onRetry} />
-            ))}
-          </div>
+      {/* Label */}
+      <div className="p-2">
+        <p className="text-gray-400 text-xs leading-snug line-clamp-2">{description}</p>
+        {isError && clip && (
+          <button
+            onClick={() => onRetry(clip.id)}
+            className="mt-1.5 text-xs text-red-400 hover:text-red-300 flex items-center gap-1"
+          >
+            <RetryIcon /> Retry
+          </button>
         )}
       </div>
     </div>
   );
 }
 
-function Spinner() {
+// ─── Video clip card ──────────────────────────────────────────────────────────
+
+function VideoClipCard({
+  stageIndex,
+  description,
+  videoPrompt,
+  clip,
+  prevClip,
+  onRetry,
+}: {
+  stageIndex: number;
+  description: string;
+  videoPrompt: string;
+  clip?: Clip;
+  prevClip?: Clip;
+  onRetry: (id: string) => void;
+}) {
+  const status = clip?.status ?? 'pending';
+  const isGenerating = status === 'generating_video';
+  const isDone = status === 'done';
+  const isError = status === 'error';
+  const prevImageReady = prevClip?.imageStatus === 'done';
+  const thisImageReady = clip?.imageStatus === 'done';
+
   return (
-    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+    <div className="glass-card rounded-xl p-4 flex flex-col sm:flex-row gap-4">
+      {/* Stage label */}
+      <div className="flex-shrink-0 flex items-center gap-3 sm:w-52">
+        <div className="w-7 h-7 rounded-lg bg-white/[0.06] border border-white/[0.06] flex items-center justify-center text-xs font-bold text-gray-400">
+          {stageIndex}
+        </div>
+        <div className="min-w-0">
+          <p className="text-white text-sm font-medium leading-snug">{description}</p>
+          <StatusBadge status={status} />
+        </div>
+      </div>
+
+      {/* Video player or state */}
+      <div className="flex-1">
+        {isDone && clip?.videoPath ? (
+          <video
+            controls
+            className="w-full rounded-lg max-h-40 bg-black"
+            src={`/api/clips/${clip.id}/video`}
+            preload="metadata"
+          />
+        ) : isGenerating ? (
+          <div className="flex items-center gap-2 text-indigo-400 text-sm">
+            <Spinner /> Generating video with Kling AI…
+          </div>
+        ) : isError ? (
+          <div className="space-y-2">
+            <p className="text-red-300 text-xs font-mono bg-red-500/10 rounded-lg p-2 break-all">
+              {clip?.errorMessage ?? 'Unknown error'}
+            </p>
+            {clip && (
+              <button
+                onClick={() => onRetry(clip.id)}
+                className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300"
+              >
+                <RetryIcon /> Retry video generation
+              </button>
+            )}
+          </div>
+        ) : (
+          <p className="text-gray-600 text-xs italic">
+            {!prevImageReady || !thisImageReady
+              ? 'Waiting for stage images to be generated…'
+              : 'Ready — click Generate All Videos to start'}
+          </p>
+        )}
+      </div>
+
+      {/* Video prompt preview */}
+      <details className="sm:w-64 text-xs text-gray-600 cursor-pointer">
+        <summary className="text-gray-500 hover:text-gray-400 select-none">Show prompt</summary>
+        <p className="mt-1.5 text-gray-600 leading-relaxed">{videoPrompt}</p>
+      </details>
+    </div>
+  );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+type VideoStatus = 'pending' | 'generating_video' | 'done' | 'error' | 'no_video';
+
+function StatusBadge({ status }: { status: string }) {
+  const cfg: Record<string, { label: string; cls: string }> = {
+    pending: { label: 'Waiting', cls: 'text-gray-500 bg-gray-500/10 border-gray-500/20' },
+    generating_video: { label: 'Generating', cls: 'text-indigo-300 bg-indigo-500/10 border-indigo-500/20' },
+    done: { label: 'Complete', cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20' },
+    error: { label: 'Failed', cls: 'text-red-300 bg-red-500/10 border-red-500/20' },
+    no_video: { label: 'Start frame', cls: 'text-gray-500 bg-gray-500/10 border-gray-500/20' },
+  };
+  const c = cfg[status] ?? cfg.pending;
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs border ${c.cls} mt-0.5`}>
+      {c.label}
+    </span>
+  );
+}
+
+function RetryIcon() {
+  return (
+    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+    </svg>
+  );
+}
+
+function Spinner({ className = 'w-4 h-4' }: { className?: string }) {
+  return (
+    <svg className={`animate-spin ${className}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
     </svg>
