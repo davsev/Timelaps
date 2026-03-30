@@ -203,7 +203,7 @@ export default function ProjectDetail({
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {clips.map((clip) => (
-              <ClipCard key={clip.id} clip={clip} />
+              <ClipCard key={clip.id} clip={clip} onRetry={() => {}} />
             ))}
           </div>
         )}

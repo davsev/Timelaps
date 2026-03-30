@@ -167,4 +167,24 @@ class ClipService {
   }
 }
 
+  async retryClip(clipId: string): Promise<Clip> {
+    const clip = await db.clip.findUnique({
+      where: { id: clipId },
+      include: { project: true },
+    });
+
+    if (!clip) throw new Error(`Clip not found: ${clipId}`);
+    if (clip.status !== 'error') throw new Error('Only failed clips can be retried');
+
+    const updated = await db.clip.update({
+      where: { id: clipId },
+      data: { status: 'pending', errorMessage: null },
+    });
+
+    this.runClipGeneration(updated, clip.project).catch(console.error);
+
+    return updated;
+  }
+}
+
 export const clipService = new ClipService();
