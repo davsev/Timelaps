@@ -67,8 +67,8 @@ function friendlyError(error: unknown): Error {
         );
       case 403:
         return new Error(
-          `Forbidden: Your Kling account does not have access to this model or feature. ` +
-          `Make sure your account plan includes "kling-v2 pro" video generation. ` +
+          `Forbidden: Your Kling account does not have API access to model "${KLING_MODEL}" (${KLING_MODE} mode). ` +
+          `Visit https://klingai.com/developer to verify API is enabled and your plan supports this model. ` +
           (apiMsg ? `API said: ${apiMsg}` : '')
         );
       case 429:
