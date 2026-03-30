@@ -4,6 +4,8 @@ import axios from 'axios';
 import jwt from 'jsonwebtoken';
 
 const KLING_API_BASE = 'https://api.klingai.com';
+const KLING_MODEL = process.env.KLING_MODEL ?? 'kling-v1-6';
+const KLING_MODE = process.env.KLING_MODE ?? 'std';
 
 function mapAspectRatio(ar: string): string {
   const mapping: Record<string, string> = {
@@ -144,8 +146,8 @@ class KlingService {
         const ext = path.extname(options.startImagePath).slice(1) || 'png';
 
         const body = {
-          model_name: 'kling-v2',
-          mode: 'pro',
+          model_name: KLING_MODEL,
+          mode: KLING_MODE,
           image: `data:image/${ext};base64,${imageBase64}`,
           prompt: options.prompt,
           aspect_ratio: aspectRatio,
@@ -165,8 +167,8 @@ class KlingService {
       } else {
         // ── Text-to-video ─────────────────────────────────────────────────────
         const body = {
-          model_name: 'kling-v2',
-          mode: 'pro',
+          model_name: KLING_MODEL,
+          mode: KLING_MODE,
           prompt: options.prompt,
           aspect_ratio: aspectRatio,
           duration,
