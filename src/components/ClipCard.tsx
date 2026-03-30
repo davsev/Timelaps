@@ -69,9 +69,12 @@ export default function ClipCard({ clip, onRetry }: ClipCardProps & { onRetry?: 
   const isProcessing = status === 'generating_image' || status === 'generating_video';
 
   return (
-    <div className={`glass-card rounded-xl overflow-hidden transition-all duration-200 ${
-      isProcessing ? 'border-indigo-500/20' : ''
-    }`}>
+    <div
+      data-stage-index={clip.stageIndex}
+      className={`glass-card rounded-xl overflow-hidden transition-all duration-200 ${
+        isProcessing ? 'border-indigo-500/20' : ''
+      }`}
+    >
       {/* Header */}
       <div className="px-4 pt-4 pb-3">
         <div className="flex items-start justify-between gap-2 mb-2">

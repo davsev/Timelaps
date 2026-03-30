@@ -9,6 +9,7 @@ interface ProjectDetailProps {
   clips: Clip[];
   onGenerateNext: () => void;
   onRenderTimelapse: () => void;
+  onRetry: () => void;
   generating: boolean;
   rendering: boolean;
 }
@@ -24,6 +25,7 @@ export default function ProjectDetail({
   clips,
   onGenerateNext,
   onRenderTimelapse,
+  onRetry,
   generating,
   rendering,
 }: ProjectDetailProps) {
@@ -203,7 +205,7 @@ export default function ProjectDetail({
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {clips.map((clip) => (
-              <ClipCard key={clip.id} clip={clip} onRetry={() => {}} />
+              <ClipCard key={clip.id} clip={clip} onRetry={onRetry} />
             ))}
           </div>
         )}

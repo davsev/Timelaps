@@ -173,6 +173,7 @@ export default function ProjectPage() {
         clips={project.clips}
         onGenerateNext={handleGenerateNext}
         onRenderTimelapse={handleRenderTimelapse}
+        onRetry={() => { fetchProject(true); startPolling(); }}
         generating={generating}
         rendering={rendering}
       />

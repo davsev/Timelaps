@@ -77,6 +77,7 @@ export default function IdeaSelector({
             return (
               <button
                 key={idea.id}
+                data-testid="idea-card"
                 onClick={() => setSelectedId(idea.id)}
                 className={`w-full text-left rounded-xl border-2 p-4 transition-all duration-150 ${
                   isSelected
